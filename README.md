@@ -1,42 +1,91 @@
-<<<<<<< HEAD
-# Quiz
-=======
-# sv
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+# Quiz App
 
-## Creating a project
+A clean, responsive quiz application built with **SvelteKit** and **TailwindCSS**, powered by the **Open Trivia Database**. It features animated UI, dynamic scoring, and question fetching with retry logic.
 
-If you're seeing this, you've probably already done this step. Congrats!
+---
 
-```bash
-# create a new project in the current directory
-npx sv create
+# Features
 
-# create a new project in my-app
-npx sv create my-app
+- Google Sign-In authentication
+- Random questions from the Open Trivia DB
+- Score calculation and result feedback
+- Retry logic for network/API issues
+- Animated loaders and transitions
+- Responsive, mobile-friendly layout
+- Simple and minimal UI design
+
+---
+
+# Tech Stack
+
+- SvelteKit (TypeScript)
+- TailwindCSS
+- Open Trivia DB API
+
+---
+
+# Project Structure
+
+```
+src/
+├── lib/
+│   └── firebase.js         # Auth logic (Google Sign-In)
+├── components/
+│   └── Quiz.svelte         # Core quiz functionality
+├── routes/
+│   └── +page.svelte        # Main layout and logic
+├── app.html
+├── tailwind.config.cjs
+└── vite.config.js
 ```
 
-## Developing
+---
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+# Development
 
-```bash
-npm run dev
+- Install dependencies:
+  
+  bash
+  npm install
+  
 
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
+- Start the dev server:
 
-## Building
+  bash
+  npm run dev
 
-To create a production version of your app:
 
-```bash
-npm run build
-```
+- Lint the project:
 
-You can preview the production build with `npm run preview`.
+  bash
+  npm run lint
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
->>>>>>> f9920d5 (Initial commit)
+- Format code:
+
+  bash
+  npm run format
+
+---
+
+## Planned Enhancements
+
+- Add category and difficulty selection
+- Save and view past scores
+- Leaderboard system
+- Offline support
+- Dark mode toggle
+
+---
+
+## License
+
+This project is licensed under the **MIT License**.
+
+© 2025 Samarth Muktamath
+
+---
+
+# Motivation
+
+> *“Efforts don't always show results immediately, but they always shape outcomes silently.”*
