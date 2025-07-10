@@ -1,24 +1,32 @@
 <script>
   import { onMount } from 'svelte';
 
-  // Quiz state
+  // ======================
+  // STATE INITIALIZATION
+  // ======================
   let activeQuestion = 0;
-  let selectedQuestions = [];
   let finalScore = 0;
   let isDone = false;
   let isLoading = true;
   let allQuestions = [];
   let error = null;
   let retryCount = 0;
+  let showExplanation = false;
+  let isCheckingAnswer = false;
+  let feedbackMessage = '';
+  let motivationalQuote = '';
+  let percentage = 0;
   const MAX_RETRIES = 3;
 
-  // Fetch questions with retry logic
+
+  // ======================
+  // API FETCH FUNCTIONS
+  // ======================
   const fetchQuestions = async () => {
     try {
       isLoading = true;
       error = null;
       
-      // Add a delay if this is a retry
       if (retryCount > 0) {
         await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
       }
@@ -38,9 +46,12 @@
             ...question.incorrect_answers.map(decodeHtmlEntities),
             decodeHtmlEntities(question.correct_answer)
           ]),
-          answer: decodeHtmlEntities(question.correct_answer)
+          answer: decodeHtmlEntities(question.correct_answer),
+          userAnswer: null,
+          isCorrect: null,
+          explanation: ''
         }));
-        retryCount = 0; // Reset retry count on success
+        retryCount = 0;
       } else {
         throw new Error('Failed to load questions. Please try again.');
       }
@@ -48,7 +59,7 @@
       error = err.message;
       if (retryCount < MAX_RETRIES) {
         retryCount++;
-        await fetchQuestions(); // Auto-retry
+        await fetchQuestions();
       }
     } finally {
       isLoading = false;
@@ -57,7 +68,10 @@
 
   onMount(fetchQuestions);
 
-  // Helper functions
+
+  // ======================
+  // HELPER FUNCTIONS
+  // ======================
   function decodeHtmlEntities(text) {
     const textArea = document.createElement('textarea');
     textArea.innerHTML = text;
@@ -72,52 +86,150 @@
     return array;
   }
 
-  // Quiz logic
-  const calculateScore = () => selectedQuestions.filter(q => q.answer === q.selectedAnswer).length;
+
+  // ======================
+  // QUIZ LOGIC
+  // ======================
+  const calculateScore = () => allQuestions.filter(q => q.isCorrect).length;
 
   const handleNext = () => {
+    showExplanation = false;
     if (activeQuestion < allQuestions.length - 1) {
       activeQuestion++;
     } else {
       finalScore = calculateScore();
+      generateFeedback();
       isDone = true;
     }
   };
 
-  const handleBack = () => activeQuestion > 0 && activeQuestion--;
+  const handleBack = () => {
+    showExplanation = false;
+    if (activeQuestion > 0) activeQuestion--;
+  };
 
   const selectOption = (selectedAnswer) => {
-    const question = allQuestions[activeQuestion];
-    const index = selectedQuestions.findIndex(q => q.question === question.question);
-    
-    if (index !== -1) {
-      selectedQuestions[index].selectedAnswer = selectedAnswer;
-    } else {
-      selectedQuestions = [...selectedQuestions, { ...question, selectedAnswer }];
-    }
+    allQuestions[activeQuestion].userAnswer = selectedAnswer;
   };
 
   const handleReset = () => {
     activeQuestion = 0;
-    selectedQuestions = [];
     isDone = false;
     finalScore = 0;
     retryCount = 0;
+    showExplanation = false;
+    feedbackMessage = '';
+    motivationalQuote = '';
     fetchQuestions();
+  };
+
+
+  // ======================
+  // FEEDBACK GENERATION
+  // ======================
+  const generateFeedback = async () => {
+    try {
+      const response = await fetch('/feedback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          score: finalScore,
+          totalQuestions: allQuestions.length
+        })
+      });
+      
+      const data = await response.json();
+      feedbackMessage = data.feedback || "";
+      motivationalQuote = data.quote || "";
+      percentage = data.percentage || 0;
+      
+    } catch (err) {
+      console.error('Feedback error:', err);
+      // Fallback messages
+      percentage = Math.round((finalScore / allQuestions.length) * 100);
+      if (percentage < 40) {
+        feedbackMessage = "Don't worry! Review the questions and try again.";
+        motivationalQuote = "Every expert was once a beginner.";
+      } else if (percentage < 70) {
+        feedbackMessage = "Good effort! You're making progress.";
+        motivationalQuote = "Practice makes perfect!";
+      } else {
+        feedbackMessage = "Great job! You know your stuff!";
+        motivationalQuote = "Knowledge is power!";
+      }
+    }
+  };
+
+
+  // ======================
+  // ANSWER CHECKING
+  // ======================
+  const checkAnswer = async () => {
+    if (!allQuestions[activeQuestion].userAnswer || isCheckingAnswer) return;
+    
+    isCheckingAnswer = true;
+    const currentQ = allQuestions[activeQuestion];
+    
+    try {
+      currentQ.isCorrect = currentQ.userAnswer === currentQ.answer;
+      
+      // Get explanation
+      const response = await fetch('/api/explain', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          question: currentQ.question,
+          selectedOption: currentQ.userAnswer,
+          correctAnswer: currentQ.answer
+        })
+      });
+      
+      const data = await response.json();
+      currentQ.explanation = data.explanation || "No explanation available";
+      showExplanation = true;
+      
+    } catch (err) {
+      currentQ.explanation = "Error fetching explanation";
+      console.error('Explanation error:', err);
+    } finally {
+      isCheckingAnswer = false;
+    }
   };
 </script>
 
+
+<!-- ====================== -->
+<!-- MAIN QUIZ COMPONENT    -->
+<!-- ====================== -->
 <div class="min-h-screen flex items-center justify-center p-4 bg-transparent">
   <div class="w-full max-w-[500px] bg-gradient-to-br from-black via-[#0a0a0a] to-gray-900 rounded-2xl border border-gray-800 shadow-2xl flex flex-col" style="max-height: 90vh;">
     
-    <!-- Header -->
+    <!-- ====================== -->
+    <!-- HEADER SECTION         -->
+    <!-- ====================== -->
     <div class="p-6">
       <h1 class="text-3xl font-bold bg-gradient-to-r from-violet-400 to-violet-600 bg-clip-text text-transparent">Quiz App</h1>
       <hr class="w-24 border border-gray-700 my-4" />
     </div>
 
-    <!-- Main Content - Flexible height container -->
-    <div class="px-6 pb-4 flex-1 overflow-y-auto">
+
+    <!-- ====================== -->
+    <!-- MAIN CONTENT AREA      -->
+    <!-- ====================== -->
+    <div class="px-6 pb-4 flex-1 overflow-y-auto" class:overflow-hidden={!showExplanation && !isDone} style="scrollbar-width: none; -ms-overflow-style: none;">
+      <style>
+        .overflow-y-auto::-webkit-scrollbar {
+          display: none;
+        }
+      </style>
+
+      <!-- ====================== -->
+      <!-- LOADING STATE         -->
+      <!-- ====================== -->
       {#if isLoading}
         <div class="h-full flex justify-center items-center">
           <div class="flex flex-col items-center space-y-8">
@@ -133,6 +245,10 @@
           </div>
         </div>
 
+
+      <!-- ====================== -->
+      <!-- ERROR STATE           -->
+      <!-- ====================== -->
       {:else if error}
         <div class="h-full flex flex-col justify-center">
           <p class="text-red-400 text-center">{error}</p>
@@ -144,42 +260,49 @@
           </button>
         </div>
 
+
+      <!-- ====================== -->
+      <!-- COMPLETED STATE       -->
+      <!-- ====================== -->
       {:else if isDone}
         <div class="flex flex-col justify-between h-full">
-          <div class="py-4">
-            <p class="text-2xl mb-4 font-semibold text-green-400">🌟 Quiz Completed!</p>
-            <p class="text-lg text-white">
-              You answered <span class="text-violet-400 font-semibold">{finalScore}</span> 
-              out of <span class="text-violet-400 font-semibold">{allQuestions.length}</span> correctly.
-            </p>
-            <p class="text-base text-white mt-2">
-              {finalScore === allQuestions.length 
-                ? 'Perfect! 🎉' 
-                : finalScore >= allQuestions.length * 0.7 
-                  ? 'Good job! 👍' 
-                  : 'Keep practicing! 💪'}
-            </p>
-            <p class="mt-16 text-center text-gray-600 font-medium italic text-sm sm:text-base tracking-wide leading-relaxed">
-  "Efforts don't always show results immediately, but they always shape outcomes silently."
-</p>
-
+          <div class="py-4 space-y-6">
+            <div>
+              <p class="text-2xl mb-4 font-semibold text-green-400">🌟 Quiz Completed!</p>
+              <p class="text-lg text-white">
+                Score: <span class="text-violet-400 font-semibold">{finalScore}/{allQuestions.length}</span>
+                ({percentage}%)
+              </p>
+            </div>
+            
+            <div class="p-4 bg-gray-800/30 rounded-lg border border-gray-700">
+              <h3 class="text-violet-400 font-medium mb-2">Feedback:</h3>
+              <p class="text-gray-300 text-sm mb-4">{feedbackMessage}</p>
+              <div class="italic text-gray-400 text-sm">"{motivationalQuote}"</div>
+            </div>
+            
+            <div class="grid grid-cols-5 gap-2 mt-4">
+              {#each allQuestions as question, i (i)}
+                <div class="h-2 rounded-full 
+                  {question.isCorrect ? 'bg-green-500' : 'bg-white/50'}"></div>
+              {/each}
+            </div>
           </div>
-          <div class="flex justify-between gap-2 mt-6 pb-4">
+          
+          <div class="flex justify-center gap-2 mt-6 pb-4">
             <button
               on:click={handleReset}
-              class="flex-1 py-2 px-3 rounded-md text-sm text-white bg-gray-700 font-medium hover:bg-gray-600 transition"
+              class="py-2 px-6 rounded-md text-white bg-violet-600 hover:bg-violet-700 transition"
             >
-              Restart
-            </button>
-            <button
-              on:click={fetchQuestions}
-              class="flex-1 py-2 px-3 rounded-md text-sm text-white bg-violet-600 hover:bg-violet-700 transition"
-            >
-              New Questions
+              Restart Quiz
             </button>
           </div>
         </div>
 
+
+      <!-- ====================== -->
+      <!-- QUIZ IN PROGRESS      -->
+      <!-- ====================== -->
       {:else}
         <!-- Question -->
         <div class="mb-6">
@@ -190,43 +313,96 @@
           <div class="space-y-3">
             {#each allQuestions[activeQuestion].options as option (option)}
               <button
-                class="w-full py-3 px-4 border border-gray-700 text-gray-200 text-left rounded-lg hover:bg-gray-800/50 transition-colors
-                  {selectedQuestions.find(q => q.question === allQuestions[activeQuestion].question)?.selectedAnswer === option ? 
-                   'bg-blue-900/50 border-blue-500' : ''}"
+                class="w-full py-3 px-4 border text-left rounded-lg transition-colors
+                  {allQuestions[activeQuestion].userAnswer === option ?
+                   (allQuestions[activeQuestion].isCorrect ? 
+                    'bg-green-900/50 border-green-500 text-white' : 
+                    'bg-white/10 border-white/30 text-white') : 
+                   'border-gray-700 text-gray-200 hover:bg-gray-800/50'}
+                  {showExplanation && option === allQuestions[activeQuestion].answer ? 
+                   'border-yellow-400 bg-yellow-900/20' : ''}"
                 on:click={() => selectOption(option)}
+                disabled={showExplanation}
               >
                 {option}
+                {#if showExplanation && option === allQuestions[activeQuestion].answer}
+                  <span class="float-right text-yellow-400">✓</span>
+                {/if}
               </button>
             {/each}
           </div>
+
+          <!-- Result and Explanation -->
+          {#if showExplanation}
+            <div class="mt-6">
+              <div class="mb-4 p-3 rounded-lg text-center font-medium
+                {allQuestions[activeQuestion].isCorrect ? 
+                 'bg-green-900/30 text-green-300 border border-green-700/50' : 
+                 'bg-white/10 text-white border border-white/30'}">
+                {allQuestions[activeQuestion].isCorrect ? '✅ Correct!' : '❌ Incorrect'}
+              </div>
+              
+              <div class="p-4 bg-gray-800/30 rounded-lg border border-gray-700">
+                <h3 class="text-violet-400 font-medium mb-2">Explanation:</h3>
+                <p class="text-gray-300 text-sm">{allQuestions[activeQuestion].explanation}</p>
+              </div>
+              
+              <button
+                on:click={handleNext}
+                class="mt-4 w-full py-3 px-4 rounded-xl text-white bg-gradient-to-r from-violet-600 to-purple-700 font-medium hover:opacity-90 transition-opacity"
+              >
+                {activeQuestion === allQuestions.length - 1 ? 'See Results' : 'Next Question →'}
+              </button>
+            </div>
+          {:else if allQuestions[activeQuestion].userAnswer}
+            <button
+              on:click={checkAnswer}
+              class="mt-6 w-full py-3 px-4 rounded-xl text-white bg-gradient-to-r from-violet-600 to-purple-700 font-medium hover:opacity-90 transition-opacity"
+              disabled={isCheckingAnswer}
+            >
+              {#if isCheckingAnswer}
+                <svg class="animate-spin h-5 w-5 text-white inline mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Checking...
+              {:else}
+                Submit Answer
+              {/if}
+            </button>
+          {/if}
         </div>
       {/if}
     </div>
 
-    <!-- Navigation Buttons -->
-    {#if !isLoading && !error && !isDone}
-      <div class="p-4 ">
+
+    <!-- ====================== -->
+    <!-- NAVIGATION CONTROLS    -->
+    <!-- ====================== -->
+    {#if !isLoading && !error && !isDone && !showExplanation}
+      <div class="p-4 border-t border-gray-800">
         <div class="flex justify-between">
           <button
-            class="py-2 px-4 text-white font-medium hover:text-purple-400 transition-colors"
+            class="py-2 px-4 text-white font-medium hover:text-purple-400 transition-colors {activeQuestion === 0 ? 'opacity-30' : ''}"
             on:click={handleBack}
             disabled={activeQuestion === 0}
-            class:opacity-30={activeQuestion === 0}
           >
             ← Back
           </button>
-          <button
-            class="py-2 px-6 rounded-xl text-white bg-gradient-to-r from-violet-600 to-purple-700 font-medium hover:opacity-90 transition-opacity"
-            on:click={handleNext}
-          >
-            {activeQuestion === allQuestions.length - 1 ? 'Finish' : 'Next →'}
-          </button>
+          
+          <div class="text-gray-400 text-sm">
+            Question {activeQuestion + 1}/{allQuestions.length}
+          </div>
         </div>
       </div>
     {/if}
   </div>
 </div>
 
+
+<!-- ====================== -->
+<!-- ANIMATION STYLES      -->
+<!-- ====================== -->
 <style>
   @keyframes spin-slow {
     to { transform: rotate(360deg); }
@@ -235,6 +411,9 @@
     to { transform: rotate(360deg); }
   }
   @keyframes spin-slowest {
+    to { transform: rotate(360deg); }
+  }
+  @keyframes spin {
     to { transform: rotate(360deg); }
   }
   
@@ -247,9 +426,7 @@
   .animate-spin-slowest {
     animation: spin-slowest 6s linear infinite;
   }
-
-  /* Prevent scrolling on the body */
-  :global(body) {
-    overflow: hidden;
+  .animate-spin {
+    animation: spin 1s linear infinite;
   }
 </style>
